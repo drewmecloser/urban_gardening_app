@@ -42,8 +42,3 @@ class PlantedCrop(Base):
 
     def __repr__(self):
         return f"<PlantedCrop(crop_id={self.crop_id}, plot_id={self.plot_id})>"
-
-if __name__ == '__main__':
-    engine = create_engine('sqlite:///gardening.db')
-    Base.metadata.create_all(engine)
-    print("Database tables created successfully!")
