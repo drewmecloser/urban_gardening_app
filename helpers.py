@@ -15,7 +15,6 @@ def find_or_create_crop(name, growing_days=None, water_freq=None):
     """Finds a crop by name or creates a new one if it doesn't exist."""
     crop = session.query(Crop).filter_by(name=name.title()).first()
     if not crop:
-        # If crop doesn't exist, create it with user-provided details
         if growing_days is None:
             raise ValueError("Growing season days are required for a new crop.")
         if water_freq is None:
@@ -30,7 +29,6 @@ def find_or_create_plot(plot_name, location=None, size_sq_ft=None):
     """Finds a garden plot by name or creates a new one."""
     garden_plot = session.query(GardenPlot).filter_by(plot_name=plot_name.title()).first()
     if not garden_plot:
-        # If plot doesn't exist, create it with user-provided details
         if location is None or size_sq_ft is None:
             raise ValueError("Location and size are required for a new garden plot.")
             
