@@ -1,14 +1,12 @@
 import click
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import Base, Crop, GardenPlot, PlantedCrop
-from datetime import date, timedelta
-
-engine = create_engine('sqlite:///gardening.db')
-Session = sessionmaker(bind=engine)
-
-def get_session():
-    return Session()
+from datetime import date
+from helpers import (
+    find_or_create_crop, 
+    find_or_create_plot, 
+    add_planted_crop,
+    get_all_planted_crops,
+    delete_planted_crop
+)
 
 @click.group()
 def cli():
@@ -19,83 +17,51 @@ def cli():
 @click.option('--plot', prompt='Plot name', help='The name of the garden plot.')
 @click.option('--date', default=str(date.today()), help='Planting date (YYYY-MM-DD). Defaults to today.')
 def plant(name, plot, date):
-    session = get_session()
-    
-    crop = session.query(Crop).filter_by(name=name.title()).first()
-    if not crop:
-        click.echo(f"Crop '{name.title()}' not found. Creating a new entry...")
-        growing_days = click.prompt("Enter approximate growing season in days", type=int)
-        water_freq = click.prompt("Enter watering frequency in days", type=int)
-        crop = Crop(name=name.title(), growing_season_days=growing_days, water_frequency_days=water_freq)
-        session.add(crop)
-        session.commit()
-    
-    garden_plot = session.query(GardenPlot).filter_by(plot_name=plot.title()).first()
-    if not garden_plot:
-        click.echo(f"Garden plot '{plot.title()}' not found. Creating a new entry...")
-        location = click.prompt("Enter the plot's location")
-        size = click.prompt("Enter the plot's size in sq ft", type=int)
-        garden_plot = GardenPlot(plot_name=plot.title(), location=location, size_sq_ft=size)
-        session.add(garden_plot)
-        session.commit()
-
     try:
-        planting_date = date.fromisoformat(date)
-    except ValueError:
-        click.echo("Invalid date format. Using today's date.")
-        planting_date = date.today()
+        crop = find_or_create_crop(name)
+        if not crop.growing_season_days:
+             growing_days = click.prompt("Enter approximate growing season in days", type=int)
+             water_freq = click.prompt("Enter watering frequency in days", type=int)
+             crop = find_or_create_crop(name, growing_days, water_freq)
 
-    expected_harvest = None
-    if crop.growing_season_days:
-        expected_harvest = planting_date + timedelta(days=crop.growing_season_days)
-    
-    new_plant = PlantedCrop(
-        crop=crop,
-        garden_plot=garden_plot,
-        planting_date=planting_date,
-        expected_harvest_date=expected_harvest
-    )
-    
-    session.add(new_plant)
-    session.commit()
-    session.close()
-    click.echo(f"\nSuccessfully planted {crop.name} in {garden_plot.plot_name}!")
+        garden_plot = find_or_create_plot(plot)
+        if not garden_plot.location:
+             location = click.prompt("Enter the plot's location")
+             size = click.prompt("Enter the plot's size in sq ft", type=int)
+             garden_plot = find_or_create_plot(plot, location, size)
+
+        planting_date = date.fromisoformat(date)
+        
+        add_planted_crop(crop, garden_plot, planting_date)
+        click.secho(f"\nSuccessfully planted {crop.name} in {garden_plot.plot_name}!", fg="green")
+
+    except ValueError as e:
+        click.secho(f"Error: {e}", fg="red")
+    except Exception as e:
+        click.secho(f"An unexpected error occurred: {e}", fg="red")
 
 
 @cli.command()
 def view():
-    session = get_session()
-    plants = session.query(PlantedCrop).all()
-    
+    plants = get_all_planted_crops()
     if not plants:
-        click.echo("No crops have been planted yet.")
+        click.secho("No crops have been planted yet.", fg="red")
         return
 
-    click.echo("\n--- All Planted Crops ---")
+    click.secho("\n--- All Planted Crops ---", fg="blue")
     for plant in plants:
         harvest_date_str = plant.expected_harvest_date.isoformat() if plant.expected_harvest_date else "N/A"
-        click.echo(f"ID: {plant.id}")
-        click.echo(f"  - Crop: {plant.crop.name}")
-        click.echo(f"  - Plot: {plant.garden_plot.plot_name}")
-        click.echo(f"  - Planted on: {plant.planting_date}")
-        click.echo(f"  - Expected Harvest: {harvest_date_str}\n")
-    
-    session.close()
+        click.secho(f"ID: {plant.id} | Crop: {plant.crop.name} | Plot: {plant.garden_plot.plot_name} | Planted on: {plant.planting_date} | Expected Harvest: {harvest_date_str}", fg="cyan")
+
 
 @cli.command()
 @click.option('--id', prompt='Plant ID', type=int, help='The ID of the crop to harvest.')
 def harvest(id):
-    session = get_session()
-    plant_to_harvest = session.query(PlantedCrop).filter_by(id=id).first()
-    
-    if plant_to_harvest:
-        session.delete(plant_to_harvest)
-        session.commit()
-        click.echo(f"Successfully harvested and removed plant with ID {id}.")
+    if delete_planted_crop(id):
+        click.secho(f"Successfully harvested and removed plant with ID {id}.", fg="green")
     else:
-        click.echo(f"No plant found with ID {id}.")
-    
-    session.close()
+        click.secho(f"No plant found with ID {id}.", fg="red")
+
 
 if __name__ == '__main__':
     cli()
