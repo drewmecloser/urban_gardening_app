@@ -1,7 +1,15 @@
-from models import Crop, GardenPlot, PlantedCrop, SessionLocal
+from models import Crop, GardenPlot, PlantedCrop, Base
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from datetime import date, timedelta
 
+engine = create_engine('sqlite:///gardening.db')
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 session = SessionLocal()
+
+def create_database_tables():
+    Base.metadata.create_all(bind=engine)
+    print("Database tables created successfully!")
 
 def find_or_create_crop(name, growing_days=None, water_freq=None):
     """Finds a crop by name or creates a new one if it doesn't exist."""
