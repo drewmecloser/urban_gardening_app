@@ -1,79 +1,125 @@
-from models import Crop, GardenPlot, PlantedCrop, Base
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from datetime import date, timedelta
+from sqlalchemy.orm import sessionmaker, joinedload
+from models import Base, Crop, GardenPlot, PlantedCrop
+from datetime import timedelta
+import click
 
 engine = create_engine('sqlite:///gardening.db')
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-session = SessionLocal()
+Session = sessionmaker(bind=engine)
 
-def create_database_tables():
-    Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully!")
+def get_session():
+    return Session()
 
-def find_or_create_crop(name, growing_days=None, water_freq=None):
-    """Finds a crop by name or creates a new one if it doesn't exist."""
-    crop = session.query(Crop).filter_by(name=name.title()).first()
-    if not crop:
-        if growing_days is None:
-            raise ValueError("Growing season days are required for a new crop.")
-        if water_freq is None:
-            raise ValueError("Watering frequency is required for a new crop.")
-            
-        crop = Crop(name=name.title(), growing_season_days=growing_days, water_frequency_days=water_freq)
-        session.add(crop)
+# CRUD operations for the Crop table
+def add_new_crop(name, growing_days, water_freq):
+    session = get_session()
+    try:
+        new_crop = Crop(name=name, growing_season_days=growing_days, water_frequency_days=water_freq)
+        session.add(new_crop)
         session.commit()
-    return crop
-
-def find_or_create_plot(plot_name, location=None, size_sq_ft=None):
-    """Finds a garden plot by name or creates a new one."""
-    garden_plot = session.query(GardenPlot).filter_by(plot_name=plot_name.title()).first()
-    if not garden_plot:
-        if location is None or size_sq_ft is None:
-            raise ValueError("Location and size are required for a new garden plot.")
-            
-        garden_plot = GardenPlot(plot_name=plot_name.title(), location=location, size_sq_ft=size_sq_ft)
-        session.add(garden_plot)
-        session.commit()
-    return garden_plot
-
-def add_planted_crop(crop, garden_plot, planting_date):
-    """Adds a new planted crop to the database."""
-    expected_harvest = None
-    if crop.growing_season_days:
-        expected_harvest = planting_date + timedelta(days=crop.growing_season_days)
-    
-    new_plant = PlantedCrop(
-        crop=crop,
-        garden_plot=garden_plot,
-        planting_date=planting_date,
-        expected_harvest_date=expected_harvest
-    )
-    session.add(new_plant)
-    session.commit()
-    return new_plant
-
-def get_all_planted_crops():
-    """Retrieves all planted crops from the database."""
-    return session.query(PlantedCrop).all()
-
-def find_planted_crop_by_id(plant_id):
-    """Finds a planted crop by its ID."""
-    return session.query(PlantedCrop).filter_by(id=plant_id).first()
-
-def delete_planted_crop(plant_id):
-    """Deletes a planted crop by its ID."""
-    plant_to_harvest = find_planted_crop_by_id(plant_id)
-    if plant_to_harvest:
-        session.delete(plant_to_harvest)
-        session.commit()
-        return True
-    return False
+    finally:
+        session.close()
 
 def get_all_crops():
-    """Retrieves all available crops."""
-    return session.query(Crop).all()
+    session = get_session()
+    try:
+        crops = session.query(Crop).all()
+        return crops
+    finally:
+        session.close()
+
+def delete_crop_by_id(crop_id):
+    session = get_session()
+    try:
+        crop = session.query(Crop).filter_by(id=crop_id).first()
+        if crop:
+            session.delete(crop)
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
+
+# CRUD operations for the GardenPlot table
+def add_new_plot(plot_name, location, size_sq_ft):
+    session = get_session()
+    try:
+        new_plot = GardenPlot(plot_name=plot_name, location=location, size_sq_ft=size_sq_ft)
+        session.add(new_plot)
+        session.commit()
+    finally:
+        session.close()
 
 def get_all_plots():
-    """Retrieves all available garden plots."""
-    return session.query(GardenPlot).all()
+    session = get_session()
+    try:
+        plots = session.query(GardenPlot).all()
+        return plots
+    finally:
+        session.close()
+
+def delete_plot_by_id(plot_id):
+    session = get_session()
+    try:
+        plot = session.query(GardenPlot).filter_by(id=plot_id).first()
+        if plot:
+            session.delete(plot)
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
+
+# PlantedCrop helpers (Create, Read, Delete)
+def find_or_create_crop_by_name(name):
+    session = get_session()
+    try:
+        crop = session.query(Crop).filter_by(name=name.title()).first()
+        return crop
+    finally:
+        session.close()
+
+def find_or_create_plot_by_name(plot_name):
+    session = get_session()
+    try:
+        plot = session.query(GardenPlot).filter_by(plot_name=plot_name.title()).first()
+        return plot
+    finally:
+        session.close()
+
+def add_planted_crop(crop, garden_plot, planting_date):
+    session = get_session()
+    try:
+        expected_harvest_date = planting_date + timedelta(days=crop.growing_season_days)
+        planted_crop = PlantedCrop(
+            crop_id=crop.id,
+            plot_id=garden_plot.id,
+            planting_date=planting_date,
+            expected_harvest_date=expected_harvest_date
+        )
+        session.add(planted_crop)
+        session.commit()
+        return planted_crop
+    finally:
+        session.close()
+
+def get_all_planted_crops():
+    session = get_session()
+    try:
+        # Eagerly load the related 'crop' and 'garden_plot' objects
+        plants = session.query(PlantedCrop).options(joinedload(PlantedCrop.crop), joinedload(PlantedCrop.garden_plot)).all()
+        return plants
+    finally:
+        session.close()
+
+def delete_planted_crop(planted_crop_id):
+    session = get_session()
+    try:
+        planted_crop = session.query(PlantedCrop).filter_by(id=planted_crop_id).first()
+        if planted_crop:
+            session.delete(planted_crop)
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
